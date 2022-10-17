@@ -4,7 +4,7 @@ use std::{
 };
 
 #[derive(Clone)]
-enum BoxedCompNode {
+pub enum BoxedCompNode {
     Input {
         name: &'static str,
         value: Rc<Cell<Option<f32>>>,
@@ -22,7 +22,7 @@ enum BoxedCompNode {
     },
 }
 
-type CompNode = Rc<BoxedCompNode>;
+pub type CompNode = Rc<BoxedCompNode>;
 
 impl BoxedCompNode {
     fn update_deps(&self, dep: Weak<Self>) {
@@ -39,7 +39,7 @@ impl BoxedCompNode {
         }
     }
 
-    fn set(&self, val: f32) {
+    pub fn set(&self, val: f32) {
         if let Self::Input {
             name: _,
             value,
@@ -75,7 +75,7 @@ impl BoxedCompNode {
         }
     }
 
-    fn compute(&self) -> f32 {
+    pub fn compute(&self) -> f32 {
         match self {
             Self::Input {
                 name,
@@ -157,7 +157,7 @@ impl std::fmt::Debug for BoxedCompNode {
     }
 }
 
-fn create_input(name: &'static str) -> CompNode {
+pub fn create_input(name: &'static str) -> CompNode {
     Rc::new(BoxedCompNode::Input {
         name,
         value: Rc::new(Cell::new(None)),
@@ -165,7 +165,7 @@ fn create_input(name: &'static str) -> CompNode {
     })
 }
 
-fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
+pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Sum {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
@@ -178,7 +178,7 @@ fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
     result
 }
 
-fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
+pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Mul {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
@@ -189,30 +189,4 @@ fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
     rhs.update_deps(Rc::downgrade(&result));
 
     result
-}
-
-fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
-
-    let a = create_input("a");
-    let b = create_input("b");
-    let c = create_input("c");
-
-    let rslt = sum(a.clone(), mul(b.clone(), c.clone()));
-
-    log::debug!("{a:?}");
-    log::debug!("{b:?}");
-    log::debug!("{c:?}");
-
-    a.set(10.);
-    b.set(50.);
-    c.set(30.);
-
-    log::info!("{rslt}");
-
-    log::info!("compute : {}", rslt.compute());
-    log::info!("compute : {}", rslt.compute());
-
-    a.set(20.);
-    log::info!("compute : {}", rslt.compute());
 }
