@@ -165,6 +165,14 @@ pub fn create_input(name: &'static str) -> CompNode {
     })
 }
 
+pub fn create_input_from(name: &'static str, value: f32) -> CompNode {
+    Rc::new(BoxedCompNode::Input {
+        name,
+        value: Rc::new(Cell::new(Some(value))),
+        deps: Rc::new(RefCell::new(Vec::new())),
+    })
+}
+
 pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Sum {
         lhs: lhs.clone(),
@@ -189,4 +197,75 @@ pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
     rhs.update_deps(Rc::downgrade(&result));
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{create_input_from, mul, sum};
+
+    #[test]
+    fn test_sum() {
+        let a = create_input_from("a", 2.);
+        let b = create_input_from("b", 2.);
+        let expr = sum(a, b);
+
+        assert_eq!(4., expr.compute())
+    }
+
+    #[test]
+    fn test_mul() {
+        let a = create_input_from("a", 2.);
+        let b = create_input_from("b", 2.);
+        let expr = mul(a, b);
+
+        assert_eq!(4., expr.compute())
+    }
+
+    #[test]
+    fn compund_mul() {
+        let a = create_input_from("a", 2.);
+        let b = create_input_from("b", 3.);
+        let c = create_input_from("c", 4.);
+
+        // a * (b * c)
+        let expr = mul(a, mul(b, c));
+
+        assert_eq!(24., expr.compute())
+    }
+
+    #[test]
+    fn compound_sum() {
+        let a = create_input_from("a", 2.);
+        let b = create_input_from("b", 3.);
+        let c = create_input_from("c", 4.);
+
+        // a + (b + c)
+        let expr = sum(a, sum(b, c));
+
+        assert_eq!(9., expr.compute())
+    }
+
+    #[test]
+    fn compund_mul_sum() {
+        let a = create_input_from("a", 2.);
+        let b = create_input_from("b", 3.);
+        let c = create_input_from("c", 4.);
+
+        // a + (b * c)
+        let expr = sum(a, mul(b, c));
+
+        assert_eq!(14., expr.compute())
+    }
+
+    #[test]
+    fn compound_sum_mul() {
+        let a = create_input_from("a", 5.);
+        let b = create_input_from("b", 3.);
+        let c = create_input_from("c", 4.);
+
+        // a * (b + c)
+        let expr = mul(a, sum(b, c));
+
+        assert_eq!(35., expr.compute())
+    }
 }
