@@ -22,6 +22,8 @@ enum BoxedCompNode {
     },
 }
 
+type CompNode = Rc<BoxedCompNode>;
+
 impl BoxedCompNode {
     fn update_deps(&self, dep: Weak<Self>) {
         match self {
@@ -30,7 +32,7 @@ impl BoxedCompNode {
                 value: _,
                 deps,
             } => deps.borrow_mut().push(dep),
-            Self::Sum { lhs, rhs, cache: _ } | Self::Mul { lhs, rhs, cache: _ } => {
+            Self::Sum { lhs, rhs, .. } | Self::Mul { lhs, rhs, .. } => {
                 lhs.update_deps(dep.clone());
                 rhs.update_deps(dep);
             }
@@ -65,8 +67,10 @@ impl BoxedCompNode {
                 lhs: _,
                 rhs: _,
                 cache,
-            } => cache.set(None),
-            _ => (),
+            } => {
+                cache.set(None)
+            }
+            Self::Input { .. } => (),
         }
     }
 
@@ -150,40 +154,38 @@ impl std::fmt::Debug for BoxedCompNode {
     }
 }
 
-fn create_input(name: &'static str) -> BoxedCompNode {
-    BoxedCompNode::Input {
+fn create_input(name: &'static str) -> CompNode {
+    Rc::new(BoxedCompNode::Input {
         name,
         value: Rc::new(Cell::new(None)),
         deps: Rc::new(RefCell::new(Vec::new())),
-    }
+    })
 }
 
-fn sum(lhs: BoxedCompNode, rhs: BoxedCompNode) -> BoxedCompNode {
-    let lhs = Rc::new(lhs);
-    let rhs = Rc::new(rhs);
-
-    lhs.update_deps(Rc::downgrade(&lhs));
-    rhs.update_deps(Rc::downgrade(&rhs));
-
-    BoxedCompNode::Sum {
-        lhs,
-        rhs,
+fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
+    let result = Rc::new(BoxedCompNode::Sum {
+        lhs: lhs.clone(),
+        rhs: rhs.clone(),
         cache: Cell::new(None),
-    }
+    });
+
+    lhs.update_deps(Rc::downgrade(&result));
+    rhs.update_deps(Rc::downgrade(&result));
+
+    result
 }
 
-fn mul(lhs: BoxedCompNode, rhs: BoxedCompNode) -> BoxedCompNode {
-    let lhs = Rc::new(lhs);
-    let rhs = Rc::new(rhs);
-
-    lhs.update_deps(Rc::downgrade(&lhs));
-    rhs.update_deps(Rc::downgrade(&rhs));
-
-    BoxedCompNode::Mul {
-        lhs,
-        rhs,
+fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
+    let result = Rc::new(BoxedCompNode::Mul {
+        lhs: lhs.clone(),
+        rhs: rhs.clone(),
         cache: Cell::new(None),
-    }
+    });
+
+    lhs.update_deps(Rc::downgrade(&result));
+    rhs.update_deps(Rc::downgrade(&result));
+
+    result
 }
 
 fn main() {
