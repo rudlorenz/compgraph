@@ -68,6 +68,7 @@ impl BoxedCompNode {
                 rhs: _,
                 cache,
             } => {
+                log::debug!("Invalidate cache {self}");
                 cache.set(None)
             }
             Self::Input { .. } => (),
@@ -88,6 +89,7 @@ impl BoxedCompNode {
                 if let Some(cached_value) = cache.get() {
                     cached_value
                 } else {
+                    log::debug!("Cache miss {}", self);
                     let rslt = lhs.compute() + rhs.compute();
                     cache.set(Some(rslt));
                     rslt
@@ -97,6 +99,7 @@ impl BoxedCompNode {
                 if let Some(cached_value) = cache.get() {
                     cached_value
                 } else {
+                    log::debug!("Cache miss {}", self);
                     let rslt = lhs.compute() * rhs.compute();
                     cache.set(Some(rslt));
                     rslt
@@ -189,19 +192,27 @@ fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
 }
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     let a = create_input("a");
     let b = create_input("b");
     let c = create_input("c");
 
     let rslt = sum(a.clone(), mul(b.clone(), c.clone()));
 
-    println!("{rslt}");
+    log::debug!("{a:?}");
+    log::debug!("{b:?}");
+    log::debug!("{c:?}");
 
     a.set(10.);
     b.set(50.);
     c.set(30.);
 
-    println!("{rslt}");
+    log::info!("{rslt}");
 
-    println!("compute : {}", rslt.compute());
+    log::info!("compute : {}", rslt.compute());
+    log::info!("compute : {}", rslt.compute());
+
+    a.set(20.);
+    log::info!("compute : {}", rslt.compute());
 }
