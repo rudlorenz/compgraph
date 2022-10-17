@@ -3,7 +3,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum BoxedCompNode {
     Input {
         name: &'static str,
@@ -33,22 +33,6 @@ impl BoxedCompNode {
             Self::Sum { lhs, rhs, cache: _ } | Self::Mul { lhs, rhs, cache: _ } => {
                 lhs.update_deps(dep.clone());
                 rhs.update_deps(dep);
-            }
-        }
-    }
-
-    fn as_string(&self) -> String {
-        match self {
-            Self::Input {
-                name,
-                value,
-                deps: _,
-            } => format!("{}({:?})", name, value),
-            Self::Sum { lhs, rhs, cache: _ } => {
-                format!("({} + {})", lhs.as_string(), rhs.as_string())
-            }
-            Self::Mul { lhs, rhs, cache: _ } => {
-                format!("({} * {})", lhs.as_string(), rhs.as_string())
             }
         }
     }
@@ -132,6 +116,40 @@ impl std::fmt::Display for BoxedCompNode {
     }
 }
 
+impl std::fmt::Debug for BoxedCompNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Input { name, value, deps } => f
+                .debug_struct("Input")
+                .field("name", name)
+                .field("value", value)
+                .field(
+                    "deps",
+                    &deps
+                        .borrow()
+                        .iter()
+                        .filter_map(Weak::upgrade)
+                        .map(|item| format!("{item}"))
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                )
+                .finish(),
+            Self::Sum { lhs, rhs, cache } => f
+                .debug_struct("Sum")
+                .field("lhs", lhs)
+                .field("rhs", rhs)
+                .field("cache", cache)
+                .finish(),
+            Self::Mul { lhs, rhs, cache } => f
+                .debug_struct("Mul")
+                .field("lhs", lhs)
+                .field("rhs", rhs)
+                .field("cache", cache)
+                .finish(),
+        }
+    }
+}
+
 fn create_input(name: &'static str) -> BoxedCompNode {
     BoxedCompNode::Input {
         name,
@@ -175,13 +193,13 @@ fn main() {
 
     let rslt = sum(a.clone(), mul(b.clone(), c.clone()));
 
-    println!("{}", rslt.as_string());
+    println!("{rslt}");
 
     a.set(10.);
     b.set(50.);
     c.set(30.);
 
-    println!("{}", rslt.as_string());
+    println!("{rslt}");
 
     println!("compute : {}", rslt.compute());
 }
