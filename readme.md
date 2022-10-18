@@ -43,3 +43,4 @@ let result = cgraph.compute();
  - [ ] Add arena-based graph
  - [ ] Add benchmarks
  - [x] ~~Find a way to reduce "copypaste" code in some of a functions (proc_macro?)~~
+ - [ ] Add cache tests

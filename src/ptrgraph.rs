@@ -69,6 +69,14 @@ impl PtrCompNode {
         }
     }
 
+    pub fn get_cache_or_value(&self) -> Option<f32> {
+        match self {
+            Self::Input { value, .. } => value.get(),
+            Self::Constant { value } => Some(*value),
+            Self::BinaryOp { cache, .. } | Self::UnaryOp { cache, .. } => cache.get(),
+        }
+    }
+
     /// Returns the compute of this [`BoxedCompNode`].
     ///
     /// # Panics
@@ -253,10 +261,15 @@ pub fn create_input_from(name: &'static str, value: f32) -> CompNode {
 
 #[must_use]
 pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
+    let cache = lhs
+        .get_cache_or_value()
+        .zip(rhs.get_cache_or_value())
+        .map(|(lhs_cache, rhs_cache)| lhs_cache + rhs_cache);
+
     let result = Rc::new(PtrCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: BinaryOpType::Sum,
     });
 
@@ -268,10 +281,14 @@ pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
+    let cache = lhs
+        .get_cache_or_value()
+        .zip(rhs.get_cache_or_value())
+        .map(|(lhs_cache, rhs_cache)| lhs_cache * rhs_cache);
     let result = Rc::new(PtrCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: BinaryOpType::Mul,
     });
 
@@ -283,10 +300,14 @@ pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
+    let cache = lhs
+        .get_cache_or_value()
+        .zip(rhs.get_cache_or_value())
+        .map(|(lhs_cache, rhs_cache)| lhs_cache - rhs_cache);
     let result = Rc::new(PtrCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: BinaryOpType::Sub,
     });
 
@@ -298,10 +319,14 @@ pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
+    let cache = lhs
+        .get_cache_or_value()
+        .zip(rhs.get_cache_or_value())
+        .map(|(lhs_cache, rhs_cache)| lhs_cache / rhs_cache);
     let result = Rc::new(PtrCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: BinaryOpType::Div,
     });
 
@@ -313,9 +338,10 @@ pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn sin(arg: CompNode) -> CompNode {
+    let cache = arg.get_cache_or_value().map(f32::sin);
     let result = Rc::new(PtrCompNode::UnaryOp {
         arg: arg.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: UnaryOpType::Sin,
     });
 
@@ -326,9 +352,10 @@ pub fn sin(arg: CompNode) -> CompNode {
 
 #[must_use]
 pub fn cos(arg: CompNode) -> CompNode {
+    let cache = arg.get_cache_or_value().map(f32::cos);
     let result = Rc::new(PtrCompNode::UnaryOp {
         arg: arg.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: UnaryOpType::Cos,
     });
 
@@ -339,10 +366,15 @@ pub fn cos(arg: CompNode) -> CompNode {
 
 #[must_use]
 pub fn powf(arg: CompNode, power: CompNode) -> CompNode {
+    let cache = arg
+        .get_cache_or_value()
+        .zip(power.get_cache_or_value())
+        .map(|(arg_cache, power_cache)| arg_cache.powf(power_cache));
+
     let result = Rc::new(PtrCompNode::BinaryOp {
         lhs: arg.clone(),
         rhs: power.clone(),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: BinaryOpType::Pow,
     });
 
@@ -354,10 +386,13 @@ pub fn powf(arg: CompNode, power: CompNode) -> CompNode {
 
 #[must_use]
 pub fn pow(arg: CompNode, power: f32) -> CompNode {
+    let cache = arg
+        .get_cache_or_value()
+        .map(|arg_cache| arg_cache.powf(power));
     let result = Rc::new(PtrCompNode::BinaryOp {
         lhs: arg.clone(),
         rhs: Rc::new(PtrCompNode::Constant { value: power }),
-        cache: Cell::new(None),
+        cache: Cell::new(cache),
         op_type: BinaryOpType::Pow,
     });
 
