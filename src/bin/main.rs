@@ -1,4 +1,4 @@
-use compgraph::{create_input, mul, sum};
+use compgraph::ptrgraph::{create_input, mul, sum};
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
