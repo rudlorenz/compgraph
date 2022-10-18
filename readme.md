@@ -42,4 +42,4 @@ let result = cgraph.compute();
  - [ ] Add "compound" tests
  - [ ] Add arena-based graph
  - [ ] Add benchmarks
- - [ ] Find a way to reduce "copypaste" code in some of a functions (proc_macro?)
+ - [x] ~~Find a way to reduce "copypaste" code in some of a functions (proc_macro?)~~

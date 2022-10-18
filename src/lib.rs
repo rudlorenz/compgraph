@@ -8,42 +8,18 @@ pub enum BoxedCompNode {
     Input {
         name: &'static str,
         value: Rc<Cell<Option<f32>>>,
-        deps: Rc<RefCell<Vec<Weak<BoxedCompNode>>>>,
+        deps: Rc<RefCell<Vec<Weak<Self>>>>,
     },
-    Sum {
-        lhs: Rc<BoxedCompNode>,
-        rhs: Rc<BoxedCompNode>,
+    BinaryOp {
+        rhs: Rc<Self>,
+        lhs: Rc<Self>,
         cache: Cell<Option<f32>>,
+        op_type: BinaryOpType,
     },
-    Mul {
-        lhs: Rc<BoxedCompNode>,
-        rhs: Rc<BoxedCompNode>,
+    UnaryOp {
+        arg: Rc<Self>,
         cache: Cell<Option<f32>>,
-    },
-    Sub {
-        lhs: Rc<BoxedCompNode>,
-        rhs: Rc<BoxedCompNode>,
-        cache: Cell<Option<f32>>,
-    },
-    Div {
-        lhs: Rc<BoxedCompNode>,
-        rhs: Rc<BoxedCompNode>,
-        cache: Cell<Option<f32>>,
-    },
-    // ✝️️
-    Sin {
-        arg: Rc<BoxedCompNode>,
-        cache: Cell<Option<f32>>,
-    },
-    // ⸸
-    Cos {
-        arg: Rc<BoxedCompNode>,
-        cache: Cell<Option<f32>>,
-    },
-    Pow {
-        arg: Rc<BoxedCompNode>,
-        power: Rc<BoxedCompNode>,
-        cache: Cell<Option<f32>>,
+        op_type: UnaryOpType,
     },
 }
 
@@ -54,20 +30,12 @@ impl BoxedCompNode {
         match self {
             Self::Input { deps, .. } => deps.borrow_mut().push(dep),
 
-            Self::Sum { lhs, rhs, .. }
-            | Self::Mul { lhs, rhs, .. }
-            | Self::Sub { lhs, rhs, .. }
-            | Self::Div { lhs, rhs, .. }
-            | Self::Pow {
-                arg: lhs,
-                power: rhs,
-                ..
-            } => {
+            Self::BinaryOp { lhs, rhs, .. } => {
                 lhs.update_deps(dep.clone());
                 rhs.update_deps(dep);
             }
 
-            Self::Sin { arg, .. } | Self::Cos { arg, .. } => arg.update_deps(dep),
+            Self::UnaryOp { arg, .. } => arg.update_deps(dep),
         }
     }
 
@@ -85,13 +53,7 @@ impl BoxedCompNode {
 
     fn invalidate_cache(&self) {
         match self {
-            Self::Sum { cache, .. }
-            | Self::Mul { cache, .. }
-            | Self::Sub { cache, .. }
-            | Self::Div { cache, .. }
-            | Self::Sin { cache, .. }
-            | Self::Cos { cache, .. }
-            | Self::Pow { cache, .. } => {
+            Self::BinaryOp { cache, .. } | Self::UnaryOp { cache, .. } => {
                 log::debug!("Invalidate cache {self}");
                 cache.set(None);
             }
@@ -115,65 +77,37 @@ impl BoxedCompNode {
                 .get()
                 .unwrap_or_else(|| panic!("Input {name} value not set. Aborting compute")),
 
-            // TODO: refactor, reduce copy-paste
-            Self::Sum { lhs, rhs, cache } => cache.get().map_or_else(
+            Self::BinaryOp {
+                lhs,
+                rhs,
+                cache,
+                op_type,
+            } => cache.get().map_or_else(
                 || {
                     log::debug!("Cache miss {self}");
-                    let result = lhs.compute() + rhs.compute();
+                    let result = match op_type {
+                        BinaryOpType::Sum => lhs.compute() + rhs.compute(),
+                        BinaryOpType::Mul => lhs.compute() * rhs.compute(),
+                        BinaryOpType::Sub => lhs.compute() - rhs.compute(),
+                        BinaryOpType::Div => lhs.compute() / rhs.compute(),
+                        BinaryOpType::Pow => lhs.compute().powf(rhs.compute()),
+                    };
                     cache.set(Some(result));
                     result
                 },
                 |cached_value| cached_value,
             ),
-            Self::Mul { lhs, rhs, cache } => cache.get().map_or_else(
+            Self::UnaryOp {
+                arg,
+                cache,
+                op_type,
+            } => cache.get().map_or_else(
                 || {
                     log::debug!("Cache miss {self}");
-                    let result = lhs.compute() * rhs.compute();
-                    cache.set(Some(result));
-                    result
-                },
-                |cached_value| cached_value,
-            ),
-            Self::Sub { lhs, rhs, cache } => cache.get().map_or_else(
-                || {
-                    log::debug!("Cache miss {self}");
-                    let result = lhs.compute() - rhs.compute();
-                    cache.set(Some(result));
-                    result
-                },
-                |cached_value| cached_value,
-            ),
-            Self::Div { lhs, rhs, cache } => cache.get().map_or_else(
-                || {
-                    log::debug!("Cache miss {self}");
-                    let result = lhs.compute() / rhs.compute();
-                    cache.set(Some(result));
-                    result
-                },
-                |cached_value| cached_value,
-            ),
-            Self::Sin { arg, cache } => cache.get().map_or_else(
-                || {
-                    log::debug!("Cache miss {self}");
-                    let result = arg.compute().sin();
-                    cache.set(Some(result));
-                    result
-                },
-                |cached_value| cached_value,
-            ),
-            Self::Cos { arg, cache } => cache.get().map_or_else(
-                || {
-                    log::debug!("Cache miss {self}");
-                    let result = arg.compute().cos();
-                    cache.set(Some(result));
-                    result
-                },
-                |cached_value| cached_value,
-            ),
-            Self::Pow { arg, power, cache } => cache.get().map_or_else(
-                || {
-                    log::debug!("Cache miss {self}");
-                    let result = arg.compute().powf(power.compute());
+                    let result = match op_type {
+                        UnaryOpType::Sin => arg.compute().sin(),
+                        UnaryOpType::Cos => arg.compute().cos(),
+                    };
                     cache.set(Some(result));
                     result
                 },
@@ -191,13 +125,19 @@ impl std::fmt::Display for BoxedCompNode {
                 value: _,
                 deps: _,
             } => write!(f, "{name}"),
-            Self::Sum { lhs, rhs, .. } => write!(f, "({lhs} + {rhs})"),
-            Self::Mul { lhs, rhs, .. } => write!(f, "({lhs} * {rhs})"),
-            Self::Sub { lhs, rhs, .. } => write!(f, "({lhs} - {rhs})"),
-            Self::Div { lhs, rhs, .. } => write!(f, "({lhs} / {rhs})"),
-            Self::Sin { arg, .. } => write!(f, "sin({arg})"),
-            Self::Cos { arg, .. } => write!(f, "cos({arg})"),
-            Self::Pow { arg, power, .. } => write!(f, "{arg}^{power}"),
+            Self::BinaryOp {
+                rhs, lhs, op_type, ..
+            } => match op_type {
+                BinaryOpType::Sum => write!(f, "({lhs} + {rhs})"),
+                BinaryOpType::Mul => write!(f, "({lhs} * {rhs})"),
+                BinaryOpType::Sub => write!(f, "({lhs} - {rhs})"),
+                BinaryOpType::Div => write!(f, "({lhs} / {rhs})"),
+                BinaryOpType::Pow => write!(f, "{lhs}^{rhs}"),
+            },
+            Self::UnaryOp { arg, op_type, .. } => match op_type {
+                UnaryOpType::Sin => write!(f, "sin({arg})"),
+                UnaryOpType::Cos => write!(f, "cos({arg})"),
+            },
         }
     }
 }
@@ -220,46 +160,62 @@ impl std::fmt::Debug for BoxedCompNode {
                         .join(", "),
                 )
                 .finish(),
-            Self::Sum { lhs, rhs, cache } => f
-                .debug_struct("Sum")
-                .field("lhs", lhs)
+            Self::BinaryOp {
+                rhs,
+                lhs,
+                cache,
+                op_type,
+            } => f
+                .debug_struct(&format!("{op_type}"))
                 .field("rhs", rhs)
+                .field("lhs", lhs)
                 .field("cache", cache)
                 .finish(),
-            Self::Mul { lhs, rhs, cache } => f
-                .debug_struct("Mul")
-                .field("lhs", lhs)
-                .field("rhs", rhs)
-                .field("cache", cache)
-                .finish(),
-            Self::Sub { lhs, rhs, cache } => f
-                .debug_struct("Sub")
-                .field("lhs", lhs)
-                .field("rhs", rhs)
-                .field("cache", cache)
-                .finish(),
-            Self::Div { lhs, rhs, cache } => f
-                .debug_struct("Div")
-                .field("lhs", lhs)
-                .field("rhs", rhs)
-                .field("cache", cache)
-                .finish(),
-            Self::Sin { arg, cache } => f
-                .debug_struct("Sin")
+            Self::UnaryOp {
+                arg,
+                cache,
+                op_type,
+            } => f
+                .debug_struct(&format!("{op_type}"))
                 .field("arg", arg)
                 .field("cache", cache)
                 .finish(),
-            Self::Cos { arg, cache } => f
-                .debug_struct("Cos")
-                .field("arg", arg)
-                .field("cache", cache)
-                .finish(),
-            Self::Pow { arg, power, cache } => f
-                .debug_struct("Pow")
-                .field("arg", arg)
-                .field("power", power)
-                .field("cache", cache)
-                .finish(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOpType {
+    Sum,
+    Mul,
+    Sub,
+    Div,
+    Pow,
+}
+
+impl std::fmt::Display for BinaryOpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sum => write!(f, "sum"),
+            Self::Mul => write!(f, "mul"),
+            Self::Sub => write!(f, "sub"),
+            Self::Div => write!(f, "div"),
+            Self::Pow => write!(f, "pow"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOpType {
+    Sin,
+    Cos,
+}
+
+impl std::fmt::Display for UnaryOpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sin => write!(f, "sin"),
+            Self::Cos => write!(f, "cos"),
         }
     }
 }
@@ -284,10 +240,11 @@ pub fn create_input_from(name: &'static str, value: f32) -> CompNode {
 
 #[must_use]
 pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Sum {
+    let result = Rc::new(BoxedCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
         cache: Cell::new(None),
+        op_type: BinaryOpType::Sum,
     });
 
     lhs.update_deps(Rc::downgrade(&result));
@@ -298,10 +255,11 @@ pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Mul {
+    let result = Rc::new(BoxedCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
         cache: Cell::new(None),
+        op_type: BinaryOpType::Mul,
     });
 
     lhs.update_deps(Rc::downgrade(&result));
@@ -312,10 +270,11 @@ pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Sub {
+    let result = Rc::new(BoxedCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
         cache: Cell::new(None),
+        op_type: BinaryOpType::Sub,
     });
 
     lhs.update_deps(Rc::downgrade(&result));
@@ -326,10 +285,11 @@ pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Div {
+    let result = Rc::new(BoxedCompNode::BinaryOp {
         lhs: lhs.clone(),
         rhs: rhs.clone(),
         cache: Cell::new(None),
+        op_type: BinaryOpType::Div,
     });
 
     lhs.update_deps(Rc::downgrade(&result));
@@ -340,9 +300,10 @@ pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
 
 #[must_use]
 pub fn sin(arg: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Sin {
+    let result = Rc::new(BoxedCompNode::UnaryOp {
         arg: arg.clone(),
         cache: Cell::new(None),
+        op_type: UnaryOpType::Sin,
     });
 
     arg.update_deps(Rc::downgrade(&result));
@@ -352,9 +313,10 @@ pub fn sin(arg: CompNode) -> CompNode {
 
 #[must_use]
 pub fn cos(arg: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Cos {
+    let result = Rc::new(BoxedCompNode::UnaryOp {
         arg: arg.clone(),
         cache: Cell::new(None),
+        op_type: UnaryOpType::Cos,
     });
 
     arg.update_deps(Rc::downgrade(&result));
@@ -364,10 +326,11 @@ pub fn cos(arg: CompNode) -> CompNode {
 
 #[must_use]
 pub fn pow(arg: CompNode, power: CompNode) -> CompNode {
-    let result = Rc::new(BoxedCompNode::Pow {
-        arg: arg.clone(),
-        power: power.clone(),
+    let result = Rc::new(BoxedCompNode::BinaryOp {
+        lhs: arg.clone(),
+        rhs: power.clone(),
         cache: Cell::new(None),
+        op_type: BinaryOpType::Pow
     });
 
     arg.update_deps(Rc::downgrade(&result));
