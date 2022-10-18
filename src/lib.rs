@@ -72,12 +72,7 @@ impl BoxedCompNode {
     }
 
     pub fn set(&self, val: f32) {
-        if let Self::Input {
-            name: _,
-            value,
-            deps,
-        } = self
-        {
+        if let Self::Input { value, deps, .. } = self {
             value.set(Some(val));
 
             for dep in deps.borrow().iter() {
@@ -98,13 +93,18 @@ impl BoxedCompNode {
             | Self::Cos { cache, .. }
             | Self::Pow { cache, .. } => {
                 log::debug!("Invalidate cache {self}");
-                cache.set(None)
+                cache.set(None);
             }
 
             Self::Input { .. } => (),
         }
     }
 
+    /// Returns the compute of this [`BoxedCompNode`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if one of the used inputs value is not set.
     pub fn compute(&self) -> f32 {
         match self {
             Self::Input {
@@ -115,76 +115,70 @@ impl BoxedCompNode {
                 .get()
                 .unwrap_or_else(|| panic!("Input {name} value not set. Aborting compute")),
 
-            Self::Sum { lhs, rhs, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
+            // TODO: refactor, reduce copy-paste
+            Self::Sum { lhs, rhs, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
                     let result = lhs.compute() + rhs.compute();
                     cache.set(Some(result));
                     result
-                }
-            }
-            Self::Mul { lhs, rhs, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
+                },
+                |cached_value| cached_value,
+            ),
+            Self::Mul { lhs, rhs, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
                     let result = lhs.compute() * rhs.compute();
                     cache.set(Some(result));
                     result
-                }
-            }
-            Self::Sub { lhs, rhs, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
+                },
+                |cached_value| cached_value,
+            ),
+            Self::Sub { lhs, rhs, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
                     let result = lhs.compute() - rhs.compute();
                     cache.set(Some(result));
                     result
-                }
-            }
-            Self::Div { lhs, rhs, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
+                },
+                |cached_value| cached_value,
+            ),
+            Self::Div { lhs, rhs, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
                     let result = lhs.compute() / rhs.compute();
                     cache.set(Some(result));
                     result
-                }
-            }
-            Self::Sin { arg, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
-                    let result = f32::sin(arg.compute());
+                },
+                |cached_value| cached_value,
+            ),
+            Self::Sin { arg, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
+                    let result = arg.compute().sin();
                     cache.set(Some(result));
                     result
-                }
-            }
-            Self::Cos { arg, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
-                    let result = f32::cos(arg.compute());
+                },
+                |cached_value| cached_value,
+            ),
+            Self::Cos { arg, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
+                    let result = arg.compute().cos();
                     cache.set(Some(result));
                     result
-                }
-            }
-            Self::Pow { arg, power, cache } => {
-                if let Some(cached_value) = cache.get() {
-                    cached_value
-                } else {
-                    log::debug!("Cache miss {}", self);
-                    let result = f32::powf(arg.compute(), power.compute());
+                },
+                |cached_value| cached_value,
+            ),
+            Self::Pow { arg, power, cache } => cache.get().map_or_else(
+                || {
+                    log::debug!("Cache miss {self}");
+                    let result = arg.compute().powf(power.compute());
                     cache.set(Some(result));
                     result
-                }
-            }
+                },
+                |cached_value| cached_value,
+            ),
         }
     }
 }
@@ -270,6 +264,7 @@ impl std::fmt::Debug for BoxedCompNode {
     }
 }
 
+#[must_use]
 pub fn create_input(name: &'static str) -> CompNode {
     Rc::new(BoxedCompNode::Input {
         name,
@@ -278,6 +273,7 @@ pub fn create_input(name: &'static str) -> CompNode {
     })
 }
 
+#[must_use]
 pub fn create_input_from(name: &'static str, value: f32) -> CompNode {
     Rc::new(BoxedCompNode::Input {
         name,
@@ -286,6 +282,7 @@ pub fn create_input_from(name: &'static str, value: f32) -> CompNode {
     })
 }
 
+#[must_use]
 pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Sum {
         lhs: lhs.clone(),
@@ -299,6 +296,7 @@ pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
     result
 }
 
+#[must_use]
 pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Mul {
         lhs: lhs.clone(),
@@ -312,6 +310,7 @@ pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
     result
 }
 
+#[must_use]
 pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Sub {
         lhs: lhs.clone(),
@@ -325,6 +324,7 @@ pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
     result
 }
 
+#[must_use]
 pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Div {
         lhs: lhs.clone(),
@@ -338,6 +338,7 @@ pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
     result
 }
 
+#[must_use]
 pub fn sin(arg: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Sin {
         arg: arg.clone(),
@@ -349,6 +350,7 @@ pub fn sin(arg: CompNode) -> CompNode {
     result
 }
 
+#[must_use]
 pub fn cos(arg: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Cos {
         arg: arg.clone(),
@@ -360,6 +362,7 @@ pub fn cos(arg: CompNode) -> CompNode {
     result
 }
 
+#[must_use]
 pub fn pow(arg: CompNode, power: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::Pow {
         arg: arg.clone(),
