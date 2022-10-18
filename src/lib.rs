@@ -10,6 +10,9 @@ pub enum BoxedCompNode {
         value: Rc<Cell<Option<f32>>>,
         deps: Rc<RefCell<Vec<Weak<Self>>>>,
     },
+    Constant {
+        value: f32,
+    },
     BinaryOp {
         rhs: Rc<Self>,
         lhs: Rc<Self>,
@@ -36,6 +39,8 @@ impl BoxedCompNode {
             }
 
             Self::UnaryOp { arg, .. } => arg.update_deps(dep),
+
+            Self::Constant { .. } => (),
         }
     }
 
@@ -58,7 +63,7 @@ impl BoxedCompNode {
                 cache.set(None);
             }
 
-            Self::Input { .. } => (),
+            Self::Input { .. } | Self::Constant { .. } => (),
         }
     }
 
@@ -69,6 +74,8 @@ impl BoxedCompNode {
     /// Panics if one of the used inputs value is not set.
     pub fn compute(&self) -> f32 {
         match self {
+            Self::Constant { value } => *value,
+
             Self::Input {
                 name,
                 value,
@@ -120,6 +127,7 @@ impl BoxedCompNode {
 impl std::fmt::Display for BoxedCompNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Constant { value } => write!(f, "{value}"),
             Self::Input {
                 name,
                 value: _,
@@ -145,6 +153,7 @@ impl std::fmt::Display for BoxedCompNode {
 impl std::fmt::Debug for BoxedCompNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Constant { value } => f.debug_struct("Constant").field("value", value).finish(),
             Self::Input { name, value, deps } => f
                 .debug_struct("Input")
                 .field("name", name)
@@ -325,16 +334,30 @@ pub fn cos(arg: CompNode) -> CompNode {
 }
 
 #[must_use]
-pub fn pow(arg: CompNode, power: CompNode) -> CompNode {
+pub fn powf(arg: CompNode, power: CompNode) -> CompNode {
     let result = Rc::new(BoxedCompNode::BinaryOp {
         lhs: arg.clone(),
         rhs: power.clone(),
         cache: Cell::new(None),
-        op_type: BinaryOpType::Pow
+        op_type: BinaryOpType::Pow,
     });
 
     arg.update_deps(Rc::downgrade(&result));
     power.update_deps(Rc::downgrade(&result));
+
+    result
+}
+
+#[must_use]
+pub fn pow(arg: CompNode, power: f32) -> CompNode {
+    let result = Rc::new(BoxedCompNode::BinaryOp {
+        lhs: arg.clone(),
+        rhs: Rc::new(BoxedCompNode::Constant { value: power }),
+        cache: Cell::new(None),
+        op_type: BinaryOpType::Pow,
+    });
+
+    arg.update_deps(Rc::downgrade(&result));
 
     result
 }
@@ -422,9 +445,18 @@ proptest! {
     #[test]
     fn test_pow((gen_a, gen_b) in (-1000..1000, -1000..1000)) {
         let arg = create_input_from("a", gen_a as f32);
+
+        let expr = pow(arg, gen_b as f32);
+
+        assert_eq!(f32::powf(gen_a as f32, gen_b as f32), expr.compute())
+    }
+
+    #[test]
+    fn test_powf((gen_a, gen_b) in (-1000..1000, -1000..1000)) {
+        let arg = create_input_from("a", gen_a as f32);
         let power = create_input_from("pw", gen_b as f32);
 
-        let expr = pow(arg, power);
+        let expr = powf(arg, power);
 
         assert_eq!(f32::powf(gen_a as f32, gen_b as f32), expr.compute())
     }
