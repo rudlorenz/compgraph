@@ -29,21 +29,23 @@ pub enum BoxedCompNode {
 pub type CompNode = Rc<BoxedCompNode>;
 
 impl BoxedCompNode {
-    fn update_deps(&self, dep: Weak<Self>) {
+    /// Add link to dependent node to correlating `BoxedCompNode::Input`.
+    fn add_dependency_link(&self, dep: Weak<Self>) {
         match self {
             Self::Input { deps, .. } => deps.borrow_mut().push(dep),
 
             Self::BinaryOp { lhs, rhs, .. } => {
-                lhs.update_deps(dep.clone());
-                rhs.update_deps(dep);
+                lhs.add_dependency_link(dep.clone());
+                rhs.add_dependency_link(dep);
             }
 
-            Self::UnaryOp { arg, .. } => arg.update_deps(dep),
+            Self::UnaryOp { arg, .. } => arg.add_dependency_link(dep),
 
             Self::Constant { .. } => (),
         }
     }
 
+    /// Set value for `BoxedCompNode`.
     pub fn set(&self, val: f32) {
         if let Self::Input { value, deps, .. } = self {
             value.set(Some(val));
@@ -229,6 +231,7 @@ impl std::fmt::Display for UnaryOpType {
     }
 }
 
+/// Create empty input with given name.
 #[must_use]
 pub fn create_input(name: &'static str) -> CompNode {
     Rc::new(BoxedCompNode::Input {
@@ -238,6 +241,7 @@ pub fn create_input(name: &'static str) -> CompNode {
     })
 }
 
+/// Create empty input with given name and given value.
 #[must_use]
 pub fn create_input_from(name: &'static str, value: f32) -> CompNode {
     Rc::new(BoxedCompNode::Input {
@@ -256,8 +260,8 @@ pub fn sum(lhs: CompNode, rhs: CompNode) -> CompNode {
         op_type: BinaryOpType::Sum,
     });
 
-    lhs.update_deps(Rc::downgrade(&result));
-    rhs.update_deps(Rc::downgrade(&result));
+    lhs.add_dependency_link(Rc::downgrade(&result));
+    rhs.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -271,8 +275,8 @@ pub fn mul(lhs: CompNode, rhs: CompNode) -> CompNode {
         op_type: BinaryOpType::Mul,
     });
 
-    lhs.update_deps(Rc::downgrade(&result));
-    rhs.update_deps(Rc::downgrade(&result));
+    lhs.add_dependency_link(Rc::downgrade(&result));
+    rhs.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -286,8 +290,8 @@ pub fn sub(lhs: CompNode, rhs: CompNode) -> CompNode {
         op_type: BinaryOpType::Sub,
     });
 
-    lhs.update_deps(Rc::downgrade(&result));
-    rhs.update_deps(Rc::downgrade(&result));
+    lhs.add_dependency_link(Rc::downgrade(&result));
+    rhs.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -301,8 +305,8 @@ pub fn div(lhs: CompNode, rhs: CompNode) -> CompNode {
         op_type: BinaryOpType::Div,
     });
 
-    lhs.update_deps(Rc::downgrade(&result));
-    rhs.update_deps(Rc::downgrade(&result));
+    lhs.add_dependency_link(Rc::downgrade(&result));
+    rhs.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -315,7 +319,7 @@ pub fn sin(arg: CompNode) -> CompNode {
         op_type: UnaryOpType::Sin,
     });
 
-    arg.update_deps(Rc::downgrade(&result));
+    arg.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -328,7 +332,7 @@ pub fn cos(arg: CompNode) -> CompNode {
         op_type: UnaryOpType::Cos,
     });
 
-    arg.update_deps(Rc::downgrade(&result));
+    arg.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -342,8 +346,8 @@ pub fn powf(arg: CompNode, power: CompNode) -> CompNode {
         op_type: BinaryOpType::Pow,
     });
 
-    arg.update_deps(Rc::downgrade(&result));
-    power.update_deps(Rc::downgrade(&result));
+    arg.add_dependency_link(Rc::downgrade(&result));
+    power.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
@@ -357,7 +361,7 @@ pub fn pow(arg: CompNode, power: f32) -> CompNode {
         op_type: BinaryOpType::Pow,
     });
 
-    arg.update_deps(Rc::downgrade(&result));
+    arg.add_dependency_link(Rc::downgrade(&result));
 
     result
 }
